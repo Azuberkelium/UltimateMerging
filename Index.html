@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>All Merging Games</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        :root { --cell-size: 4rem; }
+        @media (min-width: 640px) { :root { --cell-size: 5.5rem; } }
+        @media (min-width: 768px) { :root { --cell-size: 6.5rem; } }
+
+        body { background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; touch-action: manipulation; -webkit-font-smoothing: antialiased; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Festive Tile Shapes */
+        .tile { transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease, border-radius 0.3s ease; display: flex; align-items: center; justify-content: center; font-weight: bold; text-align: center; overflow: hidden; box-shadow: 0 4px 20px -2px rgba(0,0,0,0.05), inset 0 2px 4px rgba(255,255,255,0.5); cursor: pointer; user-select: none; border-radius: 20px; }
+        .tile:hover { transform: translateY(-2px) scale(1.02); box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); }
+        .tile-content { position: relative; z-index: 10; }
+        .tile-easter { 
+            border-radius: 50% 50% 50% 50% / 60% 60% 40% 40% !important; 
+            background: linear-gradient(135deg, #fef08a 0%, #fde047 100%) !important; 
+            color: #854d0e !important; 
+            border: 3px solid #facc15 !important; 
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), inset -4px -4px 12px rgba(217,119,6,0.15), inset 4px 4px 12px rgba(255,255,255,0.9) !important;
+        }
+        .tile-present { border-radius: 8px !important; border: 3px solid #facc15 !important; background: #ef4444 !important; color: white !important; position: relative; }
+        .tile-present::before { content: ''; position: absolute; width: 100%; height: 15%; background: #facc15; top: 42.5%; left: 0; z-index: 0; }
+        .tile-present::after { content: ''; position: absolute; height: 100%; width: 15%; background: #facc15; left: 42.5%; top: 0; z-index: 0; }
+        .tile-xmas { border-radius: 50% !important; background: radial-gradient(circle at 30% 30%, #ef4444, #991b1b) !important; color: white !important; border-top: 4px solid #fbbf24 !important; }
+        
+        /* Lifeline specific animations */
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        .wheel-spin { animation: spin 2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+        @keyframes shake { 0%, 100% {transform: translateX(0);} 25% {transform: translateX(-5px);} 75% {transform: translateX(5px);} }
+        .shake-anim { animation: shake 0.3s ease-in-out; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback } = React;
+
+        // --- Data & Dictionaries ---
+        const GAME_MODES = ['DartsMerge', 'DartMaps', 'Dartrix', 'AlphaDarts', 'ATM'];
+        const COMING_SOON = ['Dartstories'];
+        
+        const LIB_DARTSMERGE = Array.from({length: 24}, (_, i) => Math.pow(2, i+1)); // 2 up to 16,777,216
+        
+        const LIB_DARTMAPS = [
+            { id: 'af', flag: '🇦🇫', cap: 'Kabul' }, { id: 'al', flag: '🇦🇱', cap: 'Tirana' }, { id: 'dz', flag: '🇩🇿', cap: 'Algiers' }, { id: 'ad', flag: '🇦🇩', cap: 'Andorra la Vella' }, { id: 'ao', flag: '🇦🇴', cap: 'Luanda' }, { id: 'ag', flag: '🇦🇬', cap: 'Saint John\'s' }, { id: 'ar', flag: '🇦🇷', cap: 'Buenos Aires' }, { id: 'am', flag: '🇦🇲', cap: 'Yerevan' }, { id: 'au', flag: '🇦🇺', cap: 'Canberra' }, { id: 'at', flag: '🇦🇹', cap: 'Vienna' }, { id: 'az', flag: '🇦🇿', cap: 'Baku' }, { id: 'bs', flag: '🇧🇸', cap: 'Nassau' }, { id: 'bh', flag: '🇧🇭', cap: 'Manama' }, { id: 'bd', flag: '🇧🇩', cap: 'Dhaka' }, { id: 'bb', flag: '🇧🇧', cap: 'Bridgetown' }, { id: 'by', flag: '🇧🇾', cap: 'Minsk' }, { id: 'be', flag: '🇧🇪', cap: 'Brussels' }, { id: 'bz', flag: '🇧🇿', cap: 'Belmopan' }, { id: 'bj', flag: '🇧🇯', cap: 'Porto-Novo' }, { id: 'bt', flag: '🇧🇹', cap: 'Thimphu' }, { id: 'bo', flag: '🇧🇴', cap: 'Sucre' }, { id: 'ba', flag: '🇧🇦', cap: 'Sarajevo' }, { id: 'bw', flag: '🇧🇼', cap: 'Gaborone' }, { id: 'br', flag: '🇧🇷', cap: 'Brasilia' }, { id: 'bn', flag: '🇧🇳', cap: 'Bandar Seri Begawan' }, { id: 'bg', flag: '🇧🇬', cap: 'Sofia' }, { id: 'bf', flag: '🇧🇫', cap: 'Ouagadougou' }, { id: 'bi', flag: '🇧🇮', cap: 'Gitega' }, { id: 'cv', flag: '🇨🇻', cap: 'Praia' }, { id: 'kh', flag: '🇰🇭', cap: 'Phnom Penh' }, { id: 'cm', flag: '🇨🇲', cap: 'Yaounde' }, { id: 'ca', flag: '🇨🇦', cap: 'Ottawa' }, { id: 'cf', flag: '🇨🇫', cap: 'Bangui' }, { id: 'td', flag: '🇹🇩', cap: 'N\'Djamena' }, { id: 'cl', flag: '🇨🇱', cap: 'Santiago' }, { id: 'cn', flag: '🇨🇳', cap: 'Beijing' }, { id: 'co', flag: '🇨🇴', cap: 'Bogota' }, { id: 'km', flag: '🇰🇲', cap: 'Moroni' }, { id: 'cd', flag: '🇨🇩', cap: 'Kinshasa' }, { id: 'cg', flag: '🇨🇬', cap: 'Brazzaville' }, { id: 'cr', flag: '🇨🇷', cap: 'San Jose' }, { id: 'hr', flag: '🇭🇷', cap: 'Zagreb' }, { id: 'cu', flag: '🇨🇺', cap: 'Havana' }, { id: 'cy', flag: '🇨🇾', cap: 'Nicosia' }, { id: 'cz', flag: '🇨🇿', cap: 'Prague' }, { id: 'dk', flag: '🇩🇰', cap: 'Copenhagen' }, { id: 'dj', flag: '🇩🇯', cap: 'Djibouti' }, { id: 'dm', flag: '🇩🇲', cap: 'Roseau' }, { id: 'do', flag: '🇩🇴', cap: 'Santo Domingo' }, { id: 'ec', flag: '🇪🇨', cap: 'Quito' }, { id: 'eg', flag: '🇪🇬', cap: 'Cairo' }, { id: 'sv', flag: '🇸🇻', cap: 'San Salvador' }, { id: 'gq', flag: '🇬🇶', cap: 'Malabo' }, { id: 'er', flag: '🇪🇷', cap: 'Asmara' }, { id: 'ee', flag: '🇪🇪', cap: 'Tallinn' }, { id: 'sz', flag: '🇸🇿', cap: 'Mbabane' }, { id: 'et', flag: '🇪🇹', cap: 'Addis Ababa' }, { id: 'fj', flag: '🇫🇯', cap: 'Suva' }, { id: 'fi', flag: '🇫🇮', cap: 'Helsinki' }, { id: 'fr', flag: '🇫🇷', cap: 'Paris' }, { id: 'ga', flag: '🇬🇦', cap: 'Libreville' }, { id: 'gm', flag: '🇬🇲', cap: 'Banjul' }, { id: 'ge', flag: '🇬🇪', cap: 'Tbilisi' }, { id: 'de', flag: '🇩🇪', cap: 'Berlin' }, { id: 'gh', flag: '🇬🇭', cap: 'Accra' }, { id: 'gr', flag: '🇬🇷', cap: 'Athens' }, { id: 'gd', flag: '🇬🇩', cap: 'St. George\'s' }, { id: 'gt', flag: '🇬🇹', cap: 'Guatemala City' }, { id: 'gn', flag: '🇬🇳', cap: 'Conakry' }, { id: 'gw', flag: '🇬🇼', cap: 'Bissau' }, { id: 'gy', flag: '🇬🇾', cap: 'Georgetown' }, { id: 'ht', flag: '🇭🇹', cap: 'Port-au-Prince' }, { id: 'hn', flag: '🇭🇳', cap: 'Tegucigalpa' }, { id: 'hu', flag: '🇭🇺', cap: 'Budapest' }, { id: 'is', flag: '🇮🇸', cap: 'Reykjavik' }, { id: 'in', flag: '🇮🇳', cap: 'New Delhi' }, { id: 'id', flag: '🇮🇩', cap: 'Jakarta' }, { id: 'ir', flag: '🇮🇷', cap: 'Tehran' }, { id: 'iq', flag: '🇮🇶', cap: 'Baghdad' }, { id: 'ie', flag: '🇮🇪', cap: 'Dublin' }, { id: 'il', flag: '🇮🇱', cap: 'Jerusalem' }, { id: 'it', flag: '🇮🇹', cap: 'Rome' }, { id: 'jm', flag: '🇯🇲', cap: 'Kingston' }, { id: 'jp', flag: '🇯🇵', cap: 'Tokyo' }, { id: 'jo', flag: '🇯🇴', cap: 'Amman' }, { id: 'kz', flag: '🇰🇿', cap: 'Astana' }, { id: 'ke', flag: '🇰🇪', cap: 'Nairobi' }, { id: 'ki', flag: '🇰🇮', cap: 'Tarawa' }, { id: 'kp', flag: '🇰🇵', cap: 'Pyongyang' }, { id: 'kr', flag: '🇰🇷', cap: 'Seoul' }, { id: 'kw', flag: '🇰🇼', cap: 'Kuwait City' }, { id: 'kg', flag: '🇰🇬', cap: 'Bishkek' }, { id: 'la', flag: '🇱🇦', cap: 'Vientiane' }, { id: 'lv', flag: '🇱🇻', cap: 'Riga' }, { id: 'lb', flag: '🇱🇧', cap: 'Beirut' }, { id: 'ls', flag: '🇱🇸', cap: 'Maseru' }, { id: 'lr', flag: '🇱🇷', cap: 'Monrovia' }, { id: 'ly', flag: '🇱🇾', cap: 'Tripoli' }, { id: 'li', flag: '🇱🇮', cap: 'Vaduz' }, { id: 'lt', flag: '🇱🇹', cap: 'Vilnius' }, { id: 'lu', flag: '🇱🇺', cap: 'Luxembourg' }, { id: 'mg', flag: '🇲🇬', cap: 'Antananarivo' }, { id: 'mw', flag: '🇲🇼', cap: 'Lilongwe' }, { id: 'my', flag: '🇲🇾', cap: 'Kuala Lumpur' }, { id: 'mv', flag: '🇲🇻', cap: 'Male' }, { id: 'ml', flag: '🇲🇱', cap: 'Bamako' }, { id: 'mt', flag: '🇲🇹', cap: 'Valletta' }, { id: 'mh', flag: '🇲🇭', cap: 'Majuro' }, { id: 'mr', flag: '🇲🇷', cap: 'Nouakchott' }, { id: 'mu', flag: '🇲🇺', cap: 'Port Louis' }, { id: 'mx', flag: '🇲🇽', cap: 'Mexico City' }, { id: 'fm', flag: '🇫🇲', cap: 'Palikir' }, { id: 'md', flag: '🇲🇩', cap: 'Chisinau' }, { id: 'mc', flag: '🇲🇨', cap: 'Monaco' }, { id: 'mn', flag: '🇲🇳', cap: 'Ulaanbaatar' }, { id: 'me', flag: '🇲🇪', cap: 'Podgorica' }, { id: 'ma', flag: '🇲🇦', cap: 'Rabat' }, { id: 'mz', flag: '🇲🇿', cap: 'Maputo' }, { id: 'mm', flag: '🇲🇲', cap: 'Naypyidaw' }, { id: 'na', flag: '🇳🇦', cap: 'Windhoek' }, { id: 'nr', flag: '🇳🇷', cap: 'Yaren' }, { id: 'np', flag: '🇳🇵', cap: 'Kathmandu' }, { id: 'nl', flag: '🇳🇱', cap: 'Amsterdam' }, { id: 'nz', flag: '🇳🇿', cap: 'Wellington' }, { id: 'ni', flag: '🇳🇮', cap: 'Managua' }, { id: 'ne', flag: '🇳🇪', cap: 'Niamey' }, { id: 'ng', flag: '🇳🇬', cap: 'Abuja' }, { id: 'mk', flag: '🇲🇰', cap: 'Skopje' }, { id: 'no', flag: '🇳🇴', cap: 'Oslo' }, { id: 'om', flag: '🇴🇲', cap: 'Muscat' }, { id: 'pk', flag: '🇵🇰', cap: 'Islamabad' }, { id: 'pw', flag: '🇵🇼', cap: 'Ngerulmud' }, { id: 'pa', flag: '🇵🇦', cap: 'Panama City' }, { id: 'pg', flag: '🇵🇬', cap: 'Port Moresby' }, { id: 'py', flag: '🇵🇾', cap: 'Asuncion' }, { id: 'pe', flag: '🇵🇪', cap: 'Lima' }, { id: 'ph', flag: '🇵🇭', cap: 'Manila' }, { id: 'pl', flag: '🇵🇱', cap: 'Warsaw' }, { id: 'pt', flag: '🇵🇹', cap: 'Lisbon' }, { id: 'qa', flag: '🇶🇦', cap: 'Doha' }, { id: 'ro', flag: '🇷🇴', cap: 'Bucharest' }, { id: 'ru', flag: '🇷🇺', cap: 'Moscow' }, { id: 'rw', flag: '🇷🇼', cap: 'Kigali' }, { id: 'kn', flag: '🇰🇳', cap: 'Basseterre' }, { id: 'lc', flag: '🇱🇨', cap: 'Castries' }, { id: 'vc', flag: '🇻🇨', cap: 'Kingstown' }, { id: 'ws', flag: '🇼🇸', cap: 'Apia' }, { id: 'sm', flag: '🇸🇲', cap: 'San Marino' }, { id: 'st', flag: '🇸🇹', cap: 'Sao Tome' }, { id: 'sa', flag: '🇸🇦', cap: 'Riyadh' }, { id: 'sn', flag: '🇸🇳', cap: 'Dakar' }, { id: 'rs', flag: '🇷🇸', cap: 'Belgrade' }, { id: 'sc', flag: '🇸🇨', cap: 'Victoria' }, { id: 'sl', flag: '🇸🇱', cap: 'Freetown' }, { id: 'sg', flag: '🇸🇬', cap: 'Singapore' }, { id: 'sk', flag: '🇸🇰', cap: 'Bratislava' }, { id: 'si', flag: '🇸🇮', cap: 'Ljubljana' }, { id: 'sb', flag: '🇸🇧', cap: 'Honiara' }, { id: 'so', flag: '🇸🇴', cap: 'Mogadishu' }, { id: 'za', flag: '🇿🇦', cap: 'Pretoria' }, { id: 'ss', flag: '🇸🇸', cap: 'Juba' }, { id: 'es', flag: '🇪🇸', cap: 'Madrid' }, { id: 'lk', flag: '🇱🇰', cap: 'Colombo' }, { id: 'sd', flag: '🇸🇩', cap: 'Khartoum' }, { id: 'sr', flag: '🇸🇷', cap: 'Paramaribo' }, { id: 'se', flag: '🇸🇪', cap: 'Stockholm' }, { id: 'ch', flag: '🇨🇭', cap: 'Bern' }, { id: 'sy', flag: '🇸🇾', cap: 'Damascus' }, { id: 'tj', flag: '🇹🇯', cap: 'Dushanbe' }, { id: 'tz', flag: '🇹🇿', cap: 'Dodoma' }, { id: 'th', flag: '🇹🇭', cap: 'Bangkok' }, { id: 'tl', flag: '🇹🇱', cap: 'Dili' }, { id: 'tg', flag: '🇹🇬', cap: 'Lome' }, { id: 'to', flag: '🇹🇴', cap: 'Nukuʻalofa' }, { id: 'tt', flag: '🇹🇹', cap: 'Port of Spain' }, { id: 'tn', flag: '🇹🇳', cap: 'Tunis' }, { id: 'tr', flag: '🇹🇷', cap: 'Ankara' }, { id: 'tm', flag: '🇹🇲', cap: 'Ashgabat' }, { id: 'tv', flag: '🇹🇻', cap: 'Funafuti' }, { id: 'ug', flag: '🇺🇬', cap: 'Kampala' }, { id: 'ua', flag: '🇺🇦', cap: 'Kyiv' }, { id: 'ae', flag: '🇦🇪', cap: 'Abu Dhabi' }, { id: 'gb', flag: '🇬🇧', cap: 'London' }, { id: 'us', flag: '🇺🇸', cap: 'Washington DC' }, { id: 'uy', flag: '🇺🇾', cap: 'Montevideo' }, { id: 'uz', flag: '🇺🇿', cap: 'Tashkent' }, { id: 'vu', flag: '🇻🇺', cap: 'Port Vila' }, { id: 'va', flag: '🇻🇦', cap: 'Vatican City' }, { id: 've', flag: '🇻🇪', cap: 'Caracas' }, { id: 'vn', flag: '🇻🇳', cap: 'Hanoi' }, { id: 'ye', flag: '🇾🇪', cap: 'Sanaa' }, { id: 'zm', flag: '🇿🇲', cap: 'Lusaka' }, { id: 'zw', flag: '🇿🇼', cap: 'Harare' }
+        ];
+
+        const LIB_DARTRIX = [
+            'H', 'He', 'Li', 'Be', 'B', 'C', 'N', 'O', 'F', 'Ne', 'Na', 'Mg', 'Al', 'Si', 'P', 'S', 'Cl', 'Ar', 'K', 'Ca',
+            'Sc', 'Ti', 'V', 'Cr', 'Mn', 'Fe', 'Co', 'Ni', 'Cu', 'Zn', 'Ga', 'Ge', 'As', 'Se', 'Br', 'Kr', 'Rb', 'Sr', 'Y', 'Zr',
+            'Nb', 'Mo', 'Tc', 'Ru', 'Rh', 'Pd', 'Ag', 'Cd', 'In', 'Sn', 'Sb', 'Te', 'I', 'Xe', 'Cs', 'Ba', 'La', 'Ce', 'Pr', 'Nd',
+            'Pm', 'Sm', 'Eu', 'Gd', 'Tb', 'Dy', 'Ho', 'Er', 'Tm', 'Yb', 'Lu', 'Hf', 'Ta', 'W', 'Re', 'Os', 'Ir', 'Pt', 'Au', 'Hg',
+            'Tl', 'Pb', 'Bi', 'Po', 'At', 'Rn', 'Fr', 'Ra', 'Ac', 'Th', 'Pa', 'U', 'Np', 'Pu', 'Am', 'Cm', 'Bk', 'Cf', 'Es', 'Fm',
+            'Md', 'No', 'Lr', 'Rf', 'Db', 'Sg', 'Bh', 'Hs', 'Mt', 'Ds', 'Rg', 'Cn', 'Nh', 'Fl', 'Mc', 'Lv', 'Ts', 'Og'
+        ];
+        const COMPOUNDS = { 
+            'H,O': 'H2O', 'O,H': 'H2O', 'Na,Cl': 'NaCl', 'Cl,Na': 'NaCl', 'C,O': 'CO2', 'O,C': 'CO2',
+            'C,H': 'CH4', 'H,C': 'CH4', 'N,H': 'NH3', 'H,N': 'NH3', 'H,Cl': 'HCl', 'Cl,H': 'HCl',
+            'K,Cl': 'KCl', 'Cl,K': 'KCl', 'Mg,O': 'MgO', 'O,Mg': 'MgO', 'Ca,O': 'CaO', 'O,Ca': 'CaO',
+            'Li,F': 'LiF', 'F,Li': 'LiF', 'H,F': 'HF', 'F,H': 'HF', 'K,I': 'KI', 'I,K': 'KI',
+            'Ag,Cl': 'AgCl', 'Cl,Ag': 'AgCl', 'S,O': 'SO2', 'O,S': 'SO2', 'Fe,O': 'Fe2O3', 'O,Fe': 'Fe2O3',
+            'Cu,S': 'CuS', 'S,Cu': 'CuS', 'Zn,O': 'ZnO', 'O,Zn': 'ZnO', 'N,O': 'NO2', 'O,N': 'NO2',
+            'Ba,S': 'BaS', 'S,Ba': 'BaS', 'H,Br': 'HBr', 'Br,H': 'HBr', 'C,N': 'HCN', 'N,C': 'HCN', 
+            'Pb,S': 'PbS', 'S,Pb': 'PbS', 'Al,O': 'Al2O3', 'O,Al': 'Al2O3', 'P,Cl': 'PCl3', 'Cl,P': 'PCl3',
+            'C,S': 'CS2', 'S,C': 'CS2', 'Ti,O': 'TiO2', 'O,Ti': 'TiO2', 'U,F': 'UF6', 'F,U': 'UF6',
+            'N,N': 'N2', 'O,O': 'O2', 'H,H': 'H2', 'Cl,Cl': 'Cl2', 'F,F': 'F2'
+        };
+        const LIB_ALPHADARTS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+        const WORDS = ['CAT','DOG','THE','AND','FOR','BUT','NOT','YOU','ALL','ANY','CAN','HAD','HER','WAS','ONE','OUR','OUT','DAY','GET','HAS','HIM','HIS','HOW','MAN','NEW','NOW','OLD','SEE','TWO','WAY','WHO','BOY','DID','ITS','LET','PUT','SAY','SHE','TOO','USE'];
+
+        const LIFELINES = [
+            { id: 'hammer', icon: '🔨', type: 'active', desc: 'Remove a block' },
+            { id: 'swap', icon: '🔄', type: 'active', desc: 'Swap two blocks' },
+            { id: 'bombo', icon: '💣', type: 'active', desc: 'Clear a column' },
+            { id: 'bombrow', icon: '🧨', type: 'active', desc: 'Clear a row' },
+            { id: 'wheel', icon: '🎡', type: 'instant', desc: 'Spin for prizes' },
+            { id: 'extra', icon: '🎯', type: 'instant', desc: 'Extra Dart' },
+            { id: 'expand', icon: '➕', type: 'instant', desc: 'Expand Grid' },
+            { id: 'curse', icon: '👻', type: 'instant', desc: 'DartsHausen Curse' },
+            { id: 'ad', icon: '📺', type: 'instant', desc: 'Ad Break' },
+            { id: 'mrbeast', icon: '🐯', type: 'instant', desc: 'Mr Beast Elimination' },
+            { id: 'entrance', icon: '🎵', type: 'instant', desc: 'Entrance Theme' }
+        ];
+
+        // --- Helper Functions ---
+        const getFestiveClass = () => {
+            const now = new Date();
+            const year = now.getFullYear();
+
+            // Calculate Easter Sunday using Meeus/Jones/Butcher algorithm
+            const a = year % 19;
+            const b = Math.floor(year / 100);
+            const c = year % 100;
+            const d = Math.floor(b / 4);
+            const e = b % 4;
+            const f = Math.floor((b + 8) / 25);
+            const g = Math.floor((b - f + 1) / 3);
+            const h = (19 * a + b - d - g + 15) % 30;
+            const i = Math.floor(c / 4);
+            const k = c % 4;
+            const l = (32 + 2 * e + 2 * i - h - k) % 7;
+            const m = Math.floor((a + 11 * h + 22 * l) / 451);
+            const easterMonth = Math.floor((h + l - 7 * m + 114) / 31) - 1; // 0-indexed month
+            const easterDay = ((h + l - 7 * m + 114) % 31) + 1;
+            
+            // Calculate difference in days (ignoring time of day)
+            const diffTime = new Date(now.getFullYear(), now.getMonth(), now.getDate()) - new Date(year, easterMonth, easterDay);
+            const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+            
+            // Easter: 3 days before to 3 days after
+            if (diffDays >= -3 && diffDays <= 3) return 'tile-easter';
+
+            // Presents (Week around June 16th -> 13th to 19th)
+            if (now.getMonth() === 5 && now.getDate() >= 13 && now.getDate() <= 19) return 'tile-present';
+            // Xmas (December 22-28)
+            if (now.getMonth() === 11 && now.getDate() >= 22 && now.getDate() <= 28) return 'tile-xmas';
+            
+            return 'tile-normal';
+        };
+
+        const getLibraryItems = (mode) => {
+            if (mode === 'DartsMerge') return LIB_DARTSMERGE.map(v => ({ type: 'num', val: v }));
+            if (mode === 'DartMaps') return LIB_DARTMAPS.map(v => ({ type: 'flag', val: v.flag, meta: v }));
+            if (mode === 'Dartrix') return LIB_DARTRIX.map(v => ({ type: 'elem', val: v }));
+            if (mode === 'AlphaDarts') return LIB_ALPHADARTS.map(v => ({ type: 'letter', val: v }));
+            if (mode === 'ATM') {
+                return [
+                    ...LIB_DARTSMERGE.slice(0, 6).map(v => ({ type: 'num', val: v })),
+                    ...LIB_DARTMAPS.slice(0, 6).map(v => ({ type: 'flag', val: v.flag, meta: v })),
+                    ...LIB_DARTRIX.slice(0, 6).map(v => ({ type: 'elem', val: v })),
+                    ...LIB_ALPHADARTS.slice(0, 6).map(v => ({ type: 'letter', val: v }))
+                ];
+            }
+            return [];
+        };
+
+        const TileUI = ({ item, onClick, className = "", isCursed = false }) => {
+            const festive = getFestiveClass();
+            let bg = 'bg-white';
+            
+            // Sleek gradient colorways
+            if (item?.type === 'num') bg = 'bg-gradient-to-br from-blue-50 to-blue-200 text-blue-900 border-blue-200/50';
+            if (item?.type === 'flag') bg = 'bg-gradient-to-br from-slate-50 to-slate-200 border-slate-200/50 text-4xl';
+            if (item?.type === 'elem') bg = 'bg-gradient-to-br from-indigo-50 to-indigo-200 text-indigo-900 border-indigo-200/50';
+            if (item?.type === 'letter') bg = 'bg-gradient-to-br from-amber-50 to-amber-200 text-amber-900 border-amber-200/50';
+            if (item?.type === 'system') bg = 'bg-gradient-to-br from-slate-800 to-slate-900 text-white text-3xl md:text-5xl border-slate-700 shadow-inner';
+            if (item?.type === 'lifeline') bg = 'bg-gradient-to-br from-pink-100 to-pink-300 text-pink-900 text-3xl border-pink-200/50';
+
+            let displayVal = isCursed && item?.type !== 'system' ? '13' : (item?.val || '');
+            
+            // Format large numbers so they fit beautifully in the iPad tiles
+            if (typeof displayVal === 'number' && displayVal >= 1000000) {
+                if (displayVal >= 1000000000000) displayVal = (displayVal / 1000000000000).toFixed(1).replace(/\.0$/, '') + 'T';
+                else if (displayVal >= 1000000000) displayVal = (displayVal / 1000000000).toFixed(1).replace(/\.0$/, '') + 'B';
+                else displayVal = (displayVal / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+            }
+
+            return (
+                <div onClick={onClick} className={`tile ${festive} ${bg} w-full h-full min-h-[60px] min-w-[60px] md:min-h-[80px] md:min-w-[80px] border text-2xl sm:text-3xl md:text-4xl ${className}`}>
+                    <span className="tile-content font-black tracking-tighter drop-shadow-sm">{displayVal}</span>
+                </div>
+            );
+        };
+
+        // --- Main App Component ---
+        const App = () => {
+            const [view, setView] = useState('menu'); // menu, calendar, create, play
+            const [selectedGame, setSelectedGame] = useState('ATM');
+
+            return (
+                <div className="min-h-screen max-w-7xl mx-auto flex flex-col font-sans selection:bg-blue-200">
+                    <header className="bg-slate-900/95 backdrop-blur-xl text-slate-50 p-4 md:p-6 shadow-xl flex justify-between items-center sticky top-0 z-50 border-b border-slate-800">
+                        <h1 className="text-2xl md:text-3xl font-black tracking-tighter cursor-pointer bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent" onClick={() => setView('menu')}>All Merging Games</h1>
+                        {view !== 'menu' && (
+                            <button onClick={() => setView('menu')} className="bg-slate-800 hover:bg-slate-700 px-5 py-2 rounded-full text-sm md:text-base font-bold transition-all shadow-sm ring-1 ring-slate-700">Menu</button>
+                        )}
+                    </header>
+
+                    <main className="flex-grow p-4 md:p-8 flex flex-col relative text-slate-800">
+                        {view === 'menu' && <MainMenu setView={setView} selectedGame={selectedGame} setSelectedGame={setSelectedGame} />}
+                        {view === 'calendar' && <CalendarView />}
+                        {view === 'create' && <CreateMode gameMode={selectedGame} />}
+                        {view === 'play' && <PlayMode gameMode={selectedGame} />}
+                    </main>
+                </div>
+            );
+        };
+
+        // --- Main Menu ---
+        const MainMenu = ({ setView, selectedGame, setSelectedGame }) => (
+            <div className="flex flex-col items-center justify-center space-y-10 flex-grow max-w-4xl mx-auto w-full">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 w-full">
+                    {GAME_MODES.map(mode => (
+                        <button key={mode} 
+                            onClick={() => setSelectedGame(mode)}
+                            className={`p-5 rounded-2xl shadow-sm font-black tracking-tight text-lg transition-all duration-300 ${selectedGame === mode ? 'bg-slate-900 text-white scale-105 shadow-xl ring-2 ring-slate-900 ring-offset-2 ring-offset-slate-50' : 'bg-white text-slate-600 hover:bg-slate-100 hover:scale-[1.02] border border-slate-200'}`}>
+                            {mode}
+                        </button>
+                    ))}
+                    {COMING_SOON.map(mode => (
+                        <button key={mode} disabled className="p-5 rounded-2xl shadow-sm border border-slate-200 bg-slate-50/50 text-slate-400 font-bold text-lg cursor-not-allowed flex flex-col items-center">
+                            {mode} <span className="block text-xs font-medium opacity-70 mt-1 uppercase tracking-widest">Coming Soon</span>
+                        </button>
+                    ))}
+                </div>
+
+                <div className="bg-white p-8 md:p-10 rounded-[2rem] shadow-2xl shadow-slate-200/50 w-full text-center space-y-8 border border-slate-100">
+                    <h2 className="text-3xl font-black tracking-tight text-slate-800">Selected: <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">{selectedGame}</span></h2>
+                    <div className="flex flex-col sm:flex-row gap-6 justify-center">
+                        <button onClick={() => setView('create')} className="bg-slate-100 hover:bg-slate-200 text-slate-900 border border-slate-200 px-8 py-5 rounded-2xl font-black text-xl shadow-sm flex-1 transition-all hover:-translate-y-1">
+                            CREATE MODE
+                        </button>
+                        <button onClick={() => setView('play')} className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-8 py-5 rounded-2xl font-black text-xl shadow-xl shadow-blue-500/20 flex-1 transition-all hover:-translate-y-1">
+                            PLAY MODE
+                        </button>
+                    </div>
+                </div>
+
+                <button onClick={() => setView('calendar')} className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-8 py-4 rounded-2xl font-bold shadow-sm w-full sm:w-auto transition-all flex items-center justify-center gap-2">
+                    <span className="text-xl">📅</span> Open Calendar Scheduler
+                </button>
+            </div>
+        );
+
+        // --- Calendar View ---
+        const CalendarView = () => {
+            const [schedule, setSchedule] = useState({});
+            const [selectedTool, setSelectedTool] = useState(null);
+            
+            const days = Array.from({length: 30}, (_, i) => i + 1);
+
+            const handleDayClick = (day) => {
+                if (selectedTool) {
+                    setSchedule(prev => ({...prev, [day]: selectedTool}));
+                } else {
+                    setSchedule(prev => { const n = {...prev}; delete n[day]; return n; });
+                }
+            };
+
+            return (
+                <div className="flex flex-col h-full bg-white rounded-xl shadow p-4">
+                    <h2 className="text-xl font-bold mb-4">Monthly Game Planner</h2>
+                    <div className="flex gap-2 mb-4 overflow-x-auto pb-2 hide-scrollbar">
+                        <button onClick={() => setSelectedTool(null)} className={`px-4 py-2 rounded-lg whitespace-nowrap ${selectedTool === null ? 'bg-red-500 text-white' : 'bg-gray-200'}`}>Eraser</button>
+                        {GAME_MODES.map(mode => (
+                            <button key={mode} onClick={() => setSelectedTool(mode)} 
+                                className={`px-4 py-2 rounded-lg font-bold whitespace-nowrap ${selectedTool === mode ? 'bg-blue-600 text-white shadow-inner' : 'bg-blue-100 text-blue-800'}`}>
+                                {mode}
+                            </button>
+                        ))}
+                    </div>
+                    <div className="grid grid-cols-5 gap-2 flex-grow">
+                        {days.map(day => (
+                            <div key={day} onClick={() => handleDayClick(day)} 
+                                className={`border-2 rounded-lg p-1 sm:p-2 flex flex-col items-center justify-center min-h-[60px] cursor-pointer transition-colors
+                                ${schedule[day] ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                                <span className="text-xs text-gray-500 self-start">{day}</span>
+                                {schedule[day] && <span className="font-bold text-xs sm:text-sm text-center text-blue-700">{schedule[day]}</span>}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        };
+
+        // --- Create Mode ---
+        const CreateMode = ({ gameMode }) => {
+            const [gridSize, setGridSize] = useState({r: 5, c: 5});
+            const [grid, setGrid] = useState(Array(25).fill(null));
+            const [activeBrush, setActiveBrush] = useState(null);
+            const gridRef = useRef(null);
+
+            // Ensure Play/Game Over rules
+            useEffect(() => {
+                let newGrid = [...grid];
+                let hasPlay = newGrid.some(cell => cell?.id === 'PLAY');
+                let hasOver = newGrid.some(cell => cell?.id === 'GAME OVER');
+                
+                if (!hasPlay) newGrid[0] = { type: 'system', val: '▶️', id: 'PLAY', uid: 'sys-play' };
+                if (!hasOver) newGrid[newGrid.length - 1] = { type: 'system', val: '🏁', id: 'GAME OVER', uid: 'sys-over' };
+                
+                if (!hasPlay || !hasOver) setGrid(newGrid);
+            }, [gridSize]);
+
+            const changeSize = (dr, dc) => {
+                const nr = Math.max(3, Math.min(8, gridSize.r + dr));
+                const nc = Math.max(3, Math.min(8, gridSize.c + dc));
+                setGridSize({r: nr, c: nc});
+                setGrid(Array(nr * nc).fill(null));
+            };
+
+            const handleCellClick = (idx) => {
+                if (!activeBrush) return;
+                const newGrid = [...grid];
+                newGrid[idx] = activeBrush.type === 'eraser' ? null : { ...activeBrush, uid: Math.random().toString(36).substr(2, 9) };
+                setGrid(newGrid);
+            };
+
+            const exportGrid = async () => {
+                if (!gridRef.current) return;
+                try {
+                    const canvas = await html2canvas(gridRef.current, { backgroundColor: '#ffffff' });
+                    const image = canvas.toDataURL("image/png");
+                    const link = document.createElement('a');
+                    link.href = image;
+                    link.download = `AllMerge_${gameMode}_grid.png`;
+                    link.click();
+                } catch (e) {
+                    alert("Export failed. Make sure your browser supports this feature.");
+                }
+            };
+
+            const libItems = getLibraryItems(gameMode);
+            const tools = [
+                { type: 'system', val: '▶️', id: 'PLAY' },
+                { type: 'system', val: '🏁', id: 'GAME OVER' },
+                ...libItems
+            ];
+            
+            const lifelineTools = LIFELINES.map(l => ({ type: 'lifeline', val: l.icon, meta: l }));
+
+            return (
+                <div className="flex flex-col md:flex-row gap-6 h-full">
+                    {/* Sidebar */}
+                    <div className="w-full md:w-auto bg-white p-6 rounded-2xl shadow-xl flex flex-col gap-4 max-h-[85vh]">
+                        <h3 className="text-xl font-bold border-b pb-2">Library & Tools</h3>
+                        <div className="grid grid-cols-2 gap-2">
+                            <button onClick={() => changeSize(1,0)} className="bg-gray-100 hover:bg-gray-200 py-2 rounded-xl font-semibold shadow-sm">+ Row</button>
+                            <button onClick={() => changeSize(-1,0)} className="bg-gray-100 hover:bg-gray-200 py-2 rounded-xl font-semibold shadow-sm">- Row</button>
+                            <button onClick={() => changeSize(0,1)} className="bg-gray-100 hover:bg-gray-200 py-2 rounded-xl font-semibold shadow-sm">+ Col</button>
+                            <button onClick={() => changeSize(0,-1)} className="bg-gray-100 hover:bg-gray-200 py-2 rounded-xl font-semibold shadow-sm">- Col</button>
+                        </div>
+                        <p className="text-sm text-gray-500 text-center font-mono">Size: {gridSize.r}x{gridSize.c}</p>
+                        
+                        <div className="flex-grow flex gap-4 overflow-hidden p-1">
+                            {/* Tiles Column */}
+                            <div className="w-24 sm:w-32 flex flex-col gap-3 overflow-y-auto hide-scrollbar pr-2 border-r border-gray-100">
+                                <div className="text-xs font-black text-center text-gray-400 uppercase tracking-widest sticky top-0 bg-white z-10 py-1">Tiles</div>
+                                <div onClick={() => setActiveBrush({type: 'eraser'})} 
+                                    className={`p-3 rounded-xl text-center cursor-pointer border-2 font-bold transition-colors ${activeBrush?.type === 'eraser' ? 'border-red-500 bg-red-100 text-red-700' : 'border-gray-200 hover:bg-gray-50'}`}>
+                                    🧹
+                                </div>
+                                {tools.map((item, i) => (
+                                    <div key={`tool-${i}`} onClick={() => setActiveBrush(item)} className={`cursor-pointer transform hover:scale-105 transition-transform ${activeBrush?.val === item.val ? 'ring-4 ring-blue-500 rounded-2xl shadow-lg' : ''}`}>
+                                        <TileUI item={item} />
+                                    </div>
+                                ))}
+                            </div>
+                            {/* Lifelines Column */}
+                            <div className="w-24 sm:w-32 flex flex-col gap-3 overflow-y-auto hide-scrollbar pl-1">
+                                <div className="text-xs font-black text-center text-gray-400 uppercase tracking-widest sticky top-0 bg-white z-10 py-1">Lifelines</div>
+                                {lifelineTools.map((item, i) => (
+                                    <div key={`life-${i}`} onClick={() => setActiveBrush(item)} className={`cursor-pointer transform hover:scale-105 transition-transform ${activeBrush?.val === item.val ? 'ring-4 ring-blue-500 rounded-2xl shadow-lg' : ''}`}>
+                                        <TileUI item={item} />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        <button onClick={exportGrid} className="bg-green-500 hover:bg-green-600 text-white font-black py-4 rounded-xl shadow-lg mt-auto text-lg transition-colors shrink-0">
+                            📸 Export Grid
+                        </button>
+                    </div>
+
+                    {/* Editor */}
+                    <div className="flex-grow bg-slate-100/50 border-4 border-dashed border-slate-200 rounded-3xl flex items-center justify-center p-8 overflow-hidden min-h-[60vh]">
+                        <div ref={gridRef} className="bg-white p-4 md:p-6 rounded-3xl shadow-2xl inline-block border-4 border-slate-100">
+                            <div className="relative" style={{ width: `calc(${gridSize.c} * var(--cell-size))`, height: `calc(${gridSize.r} * var(--cell-size))` }}>
+                                {/* Background Cells */}
+                                {Array(gridSize.r * gridSize.c).fill(0).map((_, i) => {
+                                    const r = Math.floor(i / gridSize.c);
+                                    const c = i % gridSize.c;
+                                    return (
+                                        <div key={`bg-${i}`} onClick={() => handleCellClick(i)} className="absolute p-1 md:p-2 cursor-pointer" style={{ width: 'var(--cell-size)', height: 'var(--cell-size)', top: `${r * 100 / gridSize.r}%`, left: `${c * 100 / gridSize.c}%` }}>
+                                            <div className="w-full h-full bg-slate-100 rounded-2xl border-2 border-dashed border-slate-300 hover:bg-slate-200 transition-colors"></div>
+                                        </div>
+                                    )
+                                })}
+                                {/* Foreground Tiles */}
+                                {grid.map((cell, i) => {
+                                    if (!cell) return null;
+                                    const r = Math.floor(i / gridSize.c);
+                                    const c = i % gridSize.c;
+                                    return (
+                                        <div key={cell.uid} onClick={() => handleCellClick(i)} className="absolute p-1 md:p-2 transition-all duration-500 ease-in-out cursor-pointer z-10"
+                                             style={{ width: 'var(--cell-size)', height: 'var(--cell-size)', top: `${r * 100 / gridSize.r}%`, left: `${c * 100 / gridSize.c}%` }}>
+                                            <TileUI item={cell} />
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- Play Mode ---
+        const PlayMode = ({ gameMode }) => {
+            const [gridSize, setGridSize] = useState({r: 5, c: 5});
+            const [grid, setGrid] = useState(Array(25).fill(null));
+            const [activeLibTile, setActiveLibTile] = useState(null);
+            const isAnimating = useRef(false);
+            
+            const [timeLeft, setTimeLeft] = useState(600); // 10 mins
+            const [score, setScore] = useState(0);
+            
+            const [bank, setBank] = useState([]);
+            const [activeLifeline, setActiveLifeline] = useState(null);
+            const [swapSelection, setSwapSelection] = useState(null);
+            
+            const [modal, setModal] = useState(null); 
+            const [isCursed, setIsCursed] = useState(false);
+            const [adsDisabled, setAdsDisabled] = useState(false);
+
+            // Audio states for Entrance Lifeline
+            const [audioData, setAudioData] = useState(null);
+            const [isPlaying, setIsPlaying] = useState(false);
+            const audioRef = useRef(null);
+
+            // Timer
+            useEffect(() => {
+                if (timeLeft <= 0) {
+                    if (!grid.some(c => c?.id === 'GAME OVER')) {
+                        // Inject game over tile when time's up if not full
+                        let emptyIdx = grid.indexOf(null);
+                        if(emptyIdx > -1) {
+                            const ng = [...grid];
+                            ng[emptyIdx] = {type:'system', val: '🏁', id: 'GAME OVER', uid: 'sys-over'};
+                            setGrid(ng);
+                        }
+                    }
+                    return;
+                }
+                const timer = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
+                return () => clearInterval(timer);
+            }, [timeLeft, grid]);
+
+            // Curse Timer
+            useEffect(() => {
+                if (isCursed) {
+                    const timer = setTimeout(() => setIsCursed(false), 10000);
+                    return () => clearTimeout(timer);
+                }
+            }, [isCursed]);
+
+            const formatTime = (s) => `${Math.floor(s/60)}:${(s%60).toString().padStart(2,'0')}`;
+
+            // Gravity Logic
+            const applyGravity = (currentGrid, cols, rows) => {
+                let newGrid = [...currentGrid];
+                let moved = false;
+                for (let c = 0; c < cols; c++) {
+                    for (let r = rows - 2; r >= 0; r--) {
+                        let idx = r * cols + c;
+                        if (newGrid[idx]) {
+                            let dropToR = r;
+                            while (dropToR + 1 < rows && !newGrid[(dropToR + 1) * cols + c]) {
+                                dropToR++;
+                            }
+                            if (dropToR !== r) {
+                                newGrid[dropToR * cols + c] = newGrid[idx];
+                                newGrid[idx] = null;
+                                moved = true;
+                            }
+                        }
+                    }
+                }
+                return { newGrid, moved };
+            };
+
+            // Checking Matches
+            const checkMatches = (currentGrid, cols, rows) => {
+                let newGrid = [...currentGrid];
+                let matched = false;
+                let addedScore = 0;
+
+                const getCell = (r, c) => newGrid[r * cols + c];
+                const setCell = (r, c, val) => { newGrid[r * cols + c] = val; };
+
+                // DartsMerge Logic (Adjacent identical numbers)
+                if (gameMode === 'DartsMerge' || gameMode === 'ATM') {
+                    for(let r=0; r<rows; r++){
+                        for(let c=0; c<cols; c++){
+                            let curr = getCell(r,c);
+                            if(curr && curr.type === 'num') {
+                                // check right and down for simple pairs
+                                [[0,1], [1,0]].forEach(([dr, dc]) => {
+                                    if(r+dr < rows && c+dc < cols) {
+                                        let neighbor = getCell(r+dr, c+dc);
+                                        if(neighbor && neighbor.type === 'num' && neighbor.val === curr.val) {
+                                            let newVal = curr.val * 2;
+                                            if (newVal > 140737488355328) newVal = curr.val; // Cap at 2^47 (nearest to 128T)
+                                            setCell(r+dr, c+dc, {type: 'num', val: newVal, uid: Math.random().toString(36).substr(2, 9)});
+                                            setCell(r, c, null);
+                                            addedScore += newVal;
+                                            matched = true;
+                                        }
+                                    }
+                                });
+                            }
+                        }
+                    }
+                }
+
+                // DartMaps Logic (Adjacency triggers quiz modal - handled separately to avoid loop freeze)
+                if ((gameMode === 'DartMaps' || gameMode === 'ATM') && !modal) {
+                     for(let r=0; r<rows; r++){
+                        for(let c=0; c<cols; c++){
+                            let curr = getCell(r,c);
+                            if(curr && curr.type === 'flag') {
+                                // check right and down
+                                [[0,1], [1,0]].forEach(([dr, dc]) => {
+                                    if(r+dr < rows && c+dc < cols) {
+                                        let neighbor = getCell(r+dr, c+dc);
+                                        if(neighbor && neighbor.type === 'flag' && neighbor.val === curr.val) {
+                                            // Trigger Modal
+                                            setModal({
+                                                type: 'quiz',
+                                                country: curr.meta,
+                                                pos1: r*cols+c,
+                                                pos2: (r+dr)*cols+(c+dc)
+                                            });
+                                            matched = false; // suspend match processing until modal resolves
+                                        }
+                                    }
+                                });
+                            }
+                        }
+                    }
+                }
+
+                // AlphaDarts Logic (Rows check for words)
+                if (gameMode === 'AlphaDarts' || gameMode === 'ATM') {
+                    for(let r=0; r<rows; r++){
+                        let rowStr = '';
+                        for(let c=0; c<cols; c++) {
+                            let cell = getCell(r,c);
+                            rowStr += (cell && cell.type === 'letter') ? cell.val : ' ';
+                        }
+                        WORDS.forEach(word => {
+                            let idx = rowStr.indexOf(word);
+                            if(idx > -1) {
+                                for(let i=0; i<word.length; i++) setCell(r, idx+i, null);
+                                addedScore += word.length * 100;
+                                matched = true;
+                            }
+                        });
+                    }
+                }
+
+                // Dartrix Logic (Pairs form compounds)
+                if (gameMode === 'Dartrix' || gameMode === 'ATM') {
+                     for(let r=0; r<rows; r++){
+                        for(let c=0; c<cols; c++){
+                            let curr = getCell(r,c);
+                            if(curr && curr.type === 'elem') {
+                                [[0,1], [1,0]].forEach(([dr, dc]) => {
+                                    if(r+dr < rows && c+dc < cols) {
+                                        let neighbor = getCell(r+dr, c+dc);
+                                        if(neighbor && neighbor.type === 'elem') {
+                                            let pair = `${curr.val},${neighbor.val}`;
+                                            if(COMPOUNDS[pair]) {
+                                                setCell(r+dr, c+dc, {type: 'elem', val: COMPOUNDS[pair], uid: Math.random().toString(36).substr(2, 9)});
+                                                setCell(r, c, null);
+                                                addedScore += 500;
+                                                matched = true;
+                                            }
+                                        }
+                                    }
+                                });
+                            }
+                        }
+                    }
+                }
+
+                if(addedScore > 0) setScore(s => s + addedScore);
+                return { newGrid, matched };
+            };
+
+            const triggerPhysics = (startingGrid) => {
+                const step = (currentGrid) => {
+                    let { newGrid, moved } = applyGravity(currentGrid, gridSize.c, gridSize.r);
+                    if (moved) {
+                        setGrid(newGrid);
+                        // Wait for gravity CSS animation to finish before merging
+                        setTimeout(() => {
+                            let matchRes = checkMatches(newGrid, gridSize.c, gridSize.r);
+                            if (matchRes.matched) {
+                                setGrid(matchRes.newGrid);
+                                // Recursively fall again after merge
+                                setTimeout(() => step(matchRes.newGrid), 400); 
+                            } else {
+                                isAnimating.current = false;
+                            }
+                        }, 400); 
+                    } else {
+                        let matchRes = checkMatches(currentGrid, gridSize.c, gridSize.r);
+                        if (matchRes.matched) {
+                            setGrid(matchRes.newGrid);
+                            setTimeout(() => step(matchRes.newGrid), 400);
+                        } else {
+                            isAnimating.current = false;
+                        }
+                    }
+                };
+                step(startingGrid);
+            };
+
+            const handleColumnClick = (c) => {
+                if (isAnimating.current) return; // Prevent overlapping clicks
+
+                // If using a lifeline that targets grid directly
+                if (activeLifeline === 'bombo') {
+                    let ng = [...grid];
+                    for(let r=0; r<gridSize.r; r++) ng[r*gridSize.c + c] = null;
+                    setActiveLifeline(null);
+                    isAnimating.current = true;
+                    triggerPhysics(ng);
+                    return;
+                }
+
+                if (!activeLibTile) return;
+
+                // Ensure the column has space at the top
+                let ng = [...grid];
+                if (ng[0 * gridSize.c + c]) return;
+
+                // Place tile at row 0 with a unique ID for React mapping
+                ng[c] = { ...activeLibTile, uid: Math.random().toString(36).substr(2, 9) };
+                // Keep activeLibTile selected so the user can easily place multiple tiles
+                setGrid(ng);
+                
+                isAnimating.current = true;
+
+                // Allow 50ms to render the new tile at the top before applying gravity
+                setTimeout(() => {
+                    triggerPhysics(ng);
+                }, 50); 
+            };
+
+            const handleGridItemClick = (idx) => {
+                if (isAnimating.current) return;
+
+                if (activeLifeline === 'hammer') {
+                    let ng = [...grid];
+                    ng[idx] = null;
+                    setActiveLifeline(null);
+                    isAnimating.current = true;
+                    triggerPhysics(ng);
+                } else if (activeLifeline === 'swap') {
+                    if (swapSelection === null) {
+                        setSwapSelection(idx);
+                    } else {
+                        let ng = [...grid];
+                        let temp = ng[swapSelection];
+                        ng[swapSelection] = ng[idx];
+                        ng[idx] = temp;
+                        setSwapSelection(null);
+                        setActiveLifeline(null);
+                        isAnimating.current = true;
+                        triggerPhysics(ng);
+                    }
+                } else if (activeLifeline === 'bombrow') {
+                    let r = Math.floor(idx / gridSize.c);
+                    let ng = [...grid];
+                    for(let c=0; c<gridSize.c; c++) ng[r*gridSize.c + c] = null;
+                    setActiveLifeline(null);
+                    isAnimating.current = true;
+                    triggerPhysics(ng);
+                } else {
+                    // Regular drop target by column mapping
+                    let c = idx % gridSize.c;
+                    handleColumnClick(c);
+                }
+            };
+
+            const executeInstantLifeline = (line) => {
+                if(line.id === 'expand') {
+                    if(Math.random() > 0.5) {
+                        setGridSize(s => ({...s, r: s.r + 1}));
+                        setGrid(g => [...g, ...Array(gridSize.c).fill(null)]);
+                    } else {
+                        setGridSize(s => ({...s, c: s.c + 1}));
+                        let ng = [];
+                        for(let i=0; i<gridSize.r; i++) {
+                            ng.push(...grid.slice(i*gridSize.c, (i+1)*gridSize.c), null);
+                        }
+                        setGrid(ng);
+                    }
+                } else if(line.id === 'curse') {
+                    setModal({type: 'alert', text: "YOU ARE CURSED! DartsHausen is here!"});
+                    setIsCursed(true);
+                } else if(line.id === 'ad') {
+                    if(!adsDisabled) setModal({type: 'ad', time: 5}); // 5s for UX, prompt said 30s
+                } else if(line.id === 'mrbeast') {
+                    setModal({type: 'mrbeast'});
+                } else if(line.id === 'wheel') {
+                    setModal({type: 'wheel'});
+                } else if(line.id === 'extra') {
+                    setModal({type: 'alert', text: "You can use an Extra Dart! (Score +1000)"});
+                    setScore(s => s + 1000);
+                } else if(line.id === 'entrance') {
+                    if (!audioData) {
+                        setModal({type: 'entrance'});
+                    } else {
+                        if (isPlaying) {
+                            audioRef.current.pause();
+                            setIsPlaying(false);
+                        } else {
+                            audioRef.current.play();
+                            setIsPlaying(true);
+                        }
+                    }
+                }
+            };
+
+            const useLifeline = (index) => {
+                const line = bank[index];
+                const newBank = bank.filter((_, i) => i !== index);
+                setBank(newBank);
+
+                if (line.type === 'active') {
+                    setActiveLifeline(line.id);
+                    setSwapSelection(null);
+                } else {
+                    executeInstantLifeline(line);
+                }
+            };
+
+            const toggleAds = () => {
+                setAdsDisabled(!adsDisabled);
+                setModal({type: 'alert', text: adsDisabled ? "Ads Enabled" : "Ads Removed!"});
+            };
+
+            // Modals renderer
+            const renderModal = () => {
+                if(!modal) return null;
+                
+                if (modal.type === 'entrance') {
+                    return (
+                        <div className="absolute inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+                            <div className="bg-white p-8 rounded-3xl text-center space-y-6 max-w-md w-full shadow-2xl">
+                                <div className="text-6xl">🎵</div>
+                                <h3 className="text-2xl font-black">Set Entrance Theme</h3>
+                                
+                                <div className="space-y-2 text-left">
+                                    <label className="block font-bold text-gray-700 text-sm">Upload Audio File:</label>
+                                    <input type="file" accept="audio/*" className="w-full text-sm border p-2 rounded" onChange={(e) => {
+                                        const file = e.target.files[0];
+                                        if(file) {
+                                            setAudioData(URL.createObjectURL(file));
+                                            setModal(null);
+                                        }
+                                    }} />
+                                </div>
+                                <div className="font-bold text-gray-400">OR</div>
+                                <div className="space-y-2 text-left">
+                                    <label className="block font-bold text-gray-700 text-sm">Paste Audio URL:</label>
+                                    <input type="text" id="audio-url" placeholder="https://example.com/song.mp3" className="w-full border p-3 rounded" />
+                                    <button className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded mt-2" onClick={() => {
+                                        const url = document.getElementById('audio-url').value;
+                                        if (url) { setAudioData(url); setModal(null); }
+                                    }}>Save URL</button>
+                                </div>
+                                <button className="underline text-gray-500 font-bold" onClick={() => setModal(null)}>Cancel</button>
+                            </div>
+                        </div>
+                    );
+                }
+
+                if (modal.type === 'quiz') {
+                    const options = [modal.country.cap, 'Paris', 'Berlin', 'Tokyo'].sort(() => Math.random() - 0.5);
+                    return (
+                        <div className="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
+                            <div className="bg-white p-6 rounded-2xl text-center space-y-4 max-w-sm w-full">
+                                <h3 className="text-2xl font-bold">Capital of {modal.country.flag}?</h3>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {options.map((opt, i) => (
+                                        <button key={i} className="bg-blue-500 text-white p-3 rounded font-bold" onClick={() => {
+                                            if(opt === modal.country.cap) {
+                                                let ng = [...grid];
+                                                ng[modal.pos1] = null;
+                                                ng[modal.pos2] = null;
+                                                setScore(s => s + 300);
+                                                triggerPhysics(ng);
+                                            } else {
+                                                // Failed, do nothing or penalize
+                                            }
+                                            setModal(null);
+                                        }}>{opt}</button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    );
+                }
+
+                if (modal.type === 'alert') {
+                    return (
+                        <div className="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50" onClick={() => setModal(null)}>
+                            <div className="bg-purple-600 text-white p-8 rounded-2xl text-center shadow-2xl transform scale-110">
+                                <h3 className="text-3xl font-black">{modal.text}</h3>
+                                <p className="mt-4 text-sm opacity-80">(Tap anywhere to continue)</p>
+                            </div>
+                        </div>
+                    );
+                }
+
+                if (modal.type === 'ad') {
+                    setTimeout(() => { if(modal.time > 0) setModal({...modal, time: modal.time - 1}); else setModal(null); }, 1000);
+                    return (
+                        <div className="absolute inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50">
+                            <div className="text-center text-white">
+                                <h2 className="text-4xl font-bold mb-4">AD BREAK</h2>
+                                <p className="text-xl">Resuming in {modal.time}s</p>
+                            </div>
+                        </div>
+                    );
+                }
+
+                if (modal.type === 'mrbeast') {
+                    return (
+                        <div className="absolute inset-0 bg-black bg-opacity-80 flex flex-col items-center justify-center z-50 text-white p-4 text-center">
+                            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/MrBeast_Logo.png/240px-MrBeast_Logo.png" alt="Mr Beast" className="w-32 h-32 object-contain mb-4 filter drop-shadow-xl" onError={(e) => e.target.style.display='none'}/>
+                            <h2 className="text-4xl font-black mb-4 text-blue-400">YOU ARE ELIMINATED!</h2>
+                            <p className="mb-6">Removing a random block...</p>
+                            <button className="bg-red-600 px-6 py-2 rounded-full font-bold" onClick={() => {
+                                let filled = grid.map((v,i) => v ? i : -1).filter(i => i > -1);
+                                if(filled.length > 0) {
+                                    let rnd = filled[Math.floor(Math.random()*filled.length)];
+                                    let ng = [...grid];
+                                    ng[rnd] = null;
+                                    triggerPhysics(ng);
+                                }
+                                setModal(null);
+                            }}>Continue</button>
+                        </div>
+                    );
+                }
+
+                if (modal.type === 'wheel') {
+                    return (
+                        <div className="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+                            <div className="bg-white p-8 rounded-full text-center w-64 h-64 flex flex-col items-center justify-center shadow-2xl relative overflow-hidden">
+                                <div className="absolute text-6xl wheel-spin">🎡</div>
+                                <div className="relative z-10 mt-16">
+                                    <button className="bg-amber-500 text-white px-4 py-2 rounded-full font-bold shadow" onClick={() => {
+                                        setBank(prev => [...prev, LIFELINES[Math.floor(Math.random()*LIFELINES.length)]]);
+                                        setModal(null);
+                                    }}>Stop Wheel</button>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                }
+
+                return null;
+            };
+
+            // Just the main library tiles for Play Mode
+            const libItems = getLibraryItems(gameMode);
+
+            return (
+                <div className="flex flex-col h-full relative">
+                    <audio ref={audioRef} src={audioData} onEnded={() => setIsPlaying(false)} />
+                    
+                    {/* Header bar */}
+                    <div className="flex justify-between items-center bg-slate-800 text-white p-4 md:p-6 rounded-t-3xl shadow-md z-20">
+                        <div className="font-bold text-xl md:text-3xl">Score: <span className="text-yellow-400">{score}</span></div>
+                        <div className={`font-mono text-2xl md:text-4xl font-bold ${timeLeft < 60 ? 'text-red-500 animate-pulse' : 'text-green-400'}`}>
+                            ⏱ {formatTime(timeLeft)}
+                        </div>
+                        <button onClick={toggleAds} className="text-sm md:text-base font-bold bg-slate-600 hover:bg-slate-500 px-4 py-2 rounded-xl transition-colors">
+                            {adsDisabled ? 'Ads: OFF' : 'Ads: ON'}
+                        </button>
+                    </div>
+
+                    <div className="flex flex-col md:flex-row flex-grow bg-slate-100 rounded-b-3xl overflow-hidden shadow-inner">
+                        {/* Dual Library: Tiles and Lifelines side-by-side */}
+                        <div className="flex flex-col md:flex-row bg-white border-r border-gray-200 shadow-sm z-10 max-h-[80vh] overflow-hidden">
+                            {/* Main Tiles Library */}
+                            <div className="w-full md:w-28 lg:w-32 p-3 md:p-4 flex md:flex-col gap-3 overflow-y-auto hide-scrollbar border-b md:border-b-0 md:border-r border-gray-100 bg-white">
+                                <div className="text-sm font-black text-center text-gray-400 uppercase tracking-widest mb-2 hidden md:block sticky top-0 bg-white">Tiles</div>
+                                {libItems.map((item, i) => (
+                                    <div key={`tile-${i}`} onClick={() => setActiveLibTile(item)} className={`shrink-0 cursor-pointer transform hover:scale-105 transition-all ${activeLibTile?.val === item.val ? 'ring-4 ring-blue-500 rounded-2xl scale-110 z-20 shadow-xl' : ''}`}>
+                                        <TileUI item={item} />
+                                    </div>
+                                ))}
+                            </div>
+                            {/* Lifelines Library */}
+                            <div className="w-full md:w-28 lg:w-32 p-3 md:p-4 flex md:flex-col gap-3 overflow-y-auto hide-scrollbar bg-slate-50">
+                                <div className="text-sm font-black text-center text-gray-400 uppercase tracking-widest mb-2 hidden md:block sticky top-0 bg-slate-50 z-10">Lifelines</div>
+                                {LIFELINES.map((l, i) => (
+                                    <div key={`life-${i}`} onClick={() => setBank(prev => [...prev, l])} className="shrink-0 cursor-pointer transform hover:scale-105 transition-all">
+                                        <TileUI item={{ type: 'lifeline', val: l.icon }} />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Grid Area */}
+                        <div className="flex-grow flex flex-col items-center justify-center p-4 md:p-8 relative bg-slate-50">
+                            {/* Target markers for columns */}
+                            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${gridSize.c}, minmax(60px, 1fr))`, gap: '12px' }} className="mb-4">
+                                {Array(gridSize.c).fill(0).map((_, i) => (
+                                    <div key={i} onClick={() => handleColumnClick(i)} className="text-center text-slate-300 text-3xl md:text-4xl animate-bounce cursor-pointer hover:text-blue-500 transition-colors">⬇</div>
+                                ))}
+                            </div>
+
+                            <div className={`bg-white p-4 md:p-6 rounded-3xl shadow-2xl border-4 ${activeLifeline ? 'border-red-500 shadow-red-200' : 'border-slate-100'}`}>
+                                <div className="relative" style={{ width: `calc(${gridSize.c} * var(--cell-size))`, height: `calc(${gridSize.r} * var(--cell-size))` }}>
+                                    {/* Background Grid Elements */}
+                                    {Array(gridSize.r * gridSize.c).fill(0).map((_, i) => {
+                                        const r = Math.floor(i / gridSize.c);
+                                        const c = i % gridSize.c;
+                                        return (
+                                            <div key={`bg-${i}`} onClick={() => handleGridItemClick(i)} className="absolute p-1 md:p-2 cursor-pointer" style={{ width: 'var(--cell-size)', height: 'var(--cell-size)', top: `${r * 100 / gridSize.r}%`, left: `${c * 100 / gridSize.c}%` }}>
+                                                <div className="w-full h-full bg-slate-100 rounded-2xl shadow-inner border-2 border-dashed border-slate-200 hover:bg-slate-200 transition-colors"></div>
+                                            </div>
+                                        )
+                                    })}
+
+                                    {/* Foreground Physics Tiles */}
+                                    {grid.map((cell, i) => {
+                                        if (!cell) return null;
+                                        const r = Math.floor(i / gridSize.c);
+                                        const c = i % gridSize.c;
+                                        return (
+                                            <div key={cell.uid} onClick={() => handleGridItemClick(i)} 
+                                                className={`absolute p-1 md:p-2 transition-all duration-400 ease-in-out cursor-pointer z-10
+                                                    ${activeLifeline ? 'hover:bg-red-50/50 rounded-2xl' : ''}
+                                                    ${swapSelection === i ? 'ring-4 ring-yellow-400 scale-105 shadow-lg rounded-2xl' : ''}
+                                                `}
+                                                style={{ width: 'var(--cell-size)', height: 'var(--cell-size)', top: `${r * 100 / gridSize.r}%`, left: `${c * 100 / gridSize.c}%` }}>
+                                                <TileUI item={cell} isCursed={isCursed} />
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            
+                            {activeLifeline && (
+                                <div className="mt-8 bg-red-100 text-red-800 px-6 py-3 rounded-full font-bold shadow-lg animate-pulse text-lg md:text-xl flex items-center gap-4">
+                                    <span>Active: {LIFELINES.find(l => l.id === activeLifeline)?.desc}</span>
+                                    <button onClick={() => {setActiveLifeline(null); setSwapSelection(null);}} className="bg-red-200 hover:bg-red-300 px-4 py-1 rounded-full text-red-900 transition-colors">Cancel</button>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Lifeline Bank */}
+                        <div className="w-full md:w-32 lg:w-40 bg-white p-3 md:p-4 flex md:flex-col gap-3 overflow-auto hide-scrollbar border-l border-gray-200 shadow-sm z-10">
+                            <div className="text-sm font-black text-center text-gray-400 uppercase tracking-widest mb-2 hidden md:block">Bank</div>
+                            {bank.length === 0 && <div className="text-sm font-bold text-gray-300 text-center mt-8">Empty</div>}
+                            {bank.map((line, i) => (
+                                <button key={i} onClick={() => useLifeline(i)} title={line.desc} className="shrink-0 w-16 h-16 sm:w-20 sm:h-20 md:w-full md:aspect-square bg-gradient-to-br from-pink-400 to-pink-600 text-white text-3xl md:text-5xl rounded-2xl shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center justify-center border-2 border-pink-300">
+                                    {line.icon}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {renderModal()}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
